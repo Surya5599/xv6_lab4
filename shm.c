@@ -6,7 +6,7 @@
 #include "mmu.h"
 #include "proc.h"
 #include "spinlock.h"
-
+#include <stdio.h>
 struct {
   struct spinlock lock;
   struct shm_page {
@@ -29,21 +29,54 @@ void shminit() {
 }
 
 int shm_open(int id, char **pointer) {
-
-//you write this
-
-
-
-
+  acquire(&(shm_table.lock));
+  int i;
+  for(i = 0; i < 64; i++){
+    if(id == (shm_table.shm_pages[i].id)){
+	mappages(myproc()->pgdir, (void*)PGROUNDUP(myproc()->sz), PGSIZE, V2P(shm_table.shm_pages[i].frame), PTE_W|PTE_U);
+	shm_table.shm_pages[i].refcnt++;
+	*pointer = (char *)PGROUNDUP(myproc()->sz);
+	myproc()->sz += PGSIZE;
+	release(&(shm_table.lock));
+	return 0;
+    } 
+  }
+  for(i = 0; i < 64; i++){
+    if(shm_table.shm_pages[i].id == 0){
+	shm_table.shm_pages[i].id = id;
+	shm_table.shm_pages[i].frame = kalloc();
+	if(shm_table.shm_pages[i].frame == 0){
+		cprintf("Kalloc error");
+	}
+	memset(shm_table.shm_pages[i].frame, 0, PGSIZE);	
+	mappages(myproc()->pgdir, (void*)PGROUNDUP(myproc()->sz), PGSIZE, V2P(shm_table.shm_pages[i].frame), PTE_W|PTE_U);
+	shm_table.shm_pages[i].refcnt = 1;
+	*pointer = (char *)PGROUNDUP(myproc()->sz);
+	myproc()->sz += PGSIZE;
+	release(&(shm_table.lock));
+	return 0;
+    }
+  }
+release(&(shm_table.lock));
 return 0; //added to remove compiler warning -- you should decide what to return
 }
 
 
 int shm_close(int id) {
 //you write this too!
-
-
-
-
-return 0; //added to remove compiler warning -- you should decide what to return
+  acquire(&(shm_table.lock));
+  int i;
+  for(i = 0; i < 64; i++){
+     if(id == shm_table.shm_pages[i].id){
+	shm_table.shm_pages[i].refcnt--;
+	if(shm_table.shm_pages[i].refcnt == 0){
+	   kfree(shm_table.shm_pages[i].frame);
+	   shm_table.shm_pages[i].refcnt =0;
+	   shm_table.shm_pages[i].frame =0;
+	   shm_table.shm_pages[i].id =0;
+	}
+     }
+  }
+  release(&(shm_table.lock));
+  return 0; //added to remove compiler warning -- you should decide what to return
 }
